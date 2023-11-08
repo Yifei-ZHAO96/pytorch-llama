@@ -1,3 +1,7 @@
+# pytorch-llama
+
+> `pytorch-llama` is a plain-pytorch implementation of `LLaMA` with minimal differences with respect to the original Facebook's implementation. The code is annotated for people who are interested in and want to learn from their implementation.
+
 ## Installation ⚙️ 
 
 Clone this repository

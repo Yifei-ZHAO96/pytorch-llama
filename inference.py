@@ -6,10 +6,20 @@ from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from tqdm import tqdm
 from pathlib import Path
 import os
-from llama import ModelArgs, Tokenizer, Transformer, LLaMA
+from llama import ModelArgs, Tokenizer, Transformer, LLaMA, default_quantize
 
 class LLaMAInference:
-    def __init__(self, llama_path: str, model_size: str, device_map='auto', **kwargs) -> None:
+    def __init__(self, llama_path: str, model_size: str, device_map='auto', quantize: bool = True, **kwargs) -> None:
+        """
+        Initialize LLaMA instance by loading the pre-trained model.
+
+        Args:
+            llama_path (str): Path to the model weights.
+            model_size (str): Model size.
+            device_map (str, optional): Device map. Defaults to 'auto'.
+            quantize (bool, optional): Where quantize the model to 8 bits. Defaults to True.
+        
+        """
         # load model abd tokenizer
         state_dict = os.path.join(llama_path, model_size, "state_dict.pth")
         params_file = os.path.join(llama_path, model_size, "params.json")
@@ -35,17 +45,67 @@ class LLaMAInference:
         model_args.vocab_size = self.tokenizer.n_words
         model_args.device = 'cuda'
         
-        with init_empty_weights():
-            torch.set_default_tensor_type(torch.HalfTensor)
-            model = Transformer(model_args)
-        torch.set_default_tensor_type(torch.FloatTensor)
+        # TODO: Currently only support either using 'accelerate' to scale to multiple gpus
+        # or use quantization without 'accelerate'.
+        if not quantize:
+            with init_empty_weights():
+                torch.set_default_dtype(torch.half)
+                ctx_tok = default_quantize.set(quantize)
+                self.model = Transformer(model_args)
+                default_quantize.reset(ctx_tok)
+            torch.set_default_dtype(torch.float)
+            
+            self.model = load_checkpoint_and_dispatch(
+                self.model,
+                state_dict,
+                device_map=device_map,
+                no_split_module_classes=["EncoderBlock"]
+            )
         
-        self.model = load_checkpoint_and_dispatch(
-            model,
-            state_dict,
-            device_map=device_map,
-            no_split_module_classes=["EncoderBlock"]
-        )
+        else:
+            torch.set_default_dtype(torch.half)
+            ctx_tok = default_quantize.set(quantize)
+            self.model = Transformer(model_args)
+            default_quantize.reset(ctx_tok)
+            key_to_dim = {
+                "w1": 0,
+                "w2": -1,
+                "w3": 0,
+                "wo": -1,
+                "wq": 0,
+                "wk": 0,
+                "wv": 0,
+                "output": 0,
+                "tok_embeddings": -1,
+                "ffn_norm": None,
+                "attention_norm": None,
+                "norm": None,
+                "rope": None,
+            }
+            torch.set_default_dtype(torch.float)
+
+            # load the state dict incrementally, to avoid memory problems
+            for i, ckpt in enumerate([state_dict]):
+                print(f"Loading checkpoint {i}: {ckpt}")
+                checkpoint = torch.load(ckpt, map_location="cpu")
+                for parameter_name, parameter in self.model.named_parameters():        
+                    short_name = parameter_name.split(".")[-2]
+                    if key_to_dim[short_name] is None and i == 0:
+                        parameter.data = checkpoint[parameter_name]
+                    elif key_to_dim[short_name] == 0:
+                        size = checkpoint[parameter_name].size(0)
+                        parameter.data[size * i : size * (i + 1), :] = checkpoint[
+                            parameter_name
+                        ]
+                    elif key_to_dim[short_name] == -1:
+                        size = checkpoint[parameter_name].size(-1)
+                        parameter.data[:, size * i : size * (i + 1)] = checkpoint[
+                            parameter_name
+                        ]
+                    del checkpoint[parameter_name]
+                del checkpoint
+        
+        self.model.cuda()
         self.generator = LLaMA(self.model, self.tokenizer)
 
     def generate(self, 

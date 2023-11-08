@@ -122,10 +122,10 @@ class LLaMA:
                 logits = logits_new
             
             if temperature > 0:
-                probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
+                probs = torch.softmax(logits / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
             else:
-                next_token = torch.argmax(logits[:, -1], dim=-1)
+                next_token = torch.argmax(logits, dim=-1)
             
             next_token = next_token.reshape(-1)
             # only replace token if prompt has already been generated
@@ -149,7 +149,7 @@ class LLaMA:
             # cut to eos token if any
             try:
                 num_generated_tokens.append(t.index(self.tokenizer.eos_id)-len(prompt_tokens[i]))
-                t = t[:, t.index(self.tokenizer.eos_id)]
+                t = t[: t.index(self.tokenizer.eos_id)]
             except ValueError:
                 num_generated_tokens.append(max_gen_len)
             decoded.append(self.tokenizer.decode(t))

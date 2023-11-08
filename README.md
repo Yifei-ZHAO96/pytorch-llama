@@ -36,3 +36,4 @@ python convert.py --llama-path <ORIGINAL-LLAMA-WEIGHTS> --model <MODEL> --output
 
 - [vanilla-llama](https://github.com/galatolofederico/vanilla-llama)
 - [pytorch-llama](https://github.com/hkproj/pytorch-llama)
+- [llama-int8](https://github.com/tloen/llama-int8/tree/main)

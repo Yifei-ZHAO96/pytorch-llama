@@ -1,5 +1,8 @@
 # pytorch-llama
 
+![Language](https://img.shields.io/badge/language-Python-orange.svg)&nbsp;
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.md)&nbsp;
+
 > `pytorch-llama` is a plain-pytorch implementation of `LLaMA` with minimal differences with respect to the original Facebook's implementation. The code is annotated for people who are interested in and want to learn from their implementation.
 
 ## Installation ⚙️ 
